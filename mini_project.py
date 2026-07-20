@@ -16,7 +16,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 @st.cache_resource
 def load_and_train_model():
-    file_path = r"C:\Users\Vikaranth\Documents\swapna project\dataset\diabetes_risk_dataset.csv"
+    file_path = r"diabetes_risk_dataset.csv"
     
     if not os.path.exists(file_path):
         st.error(f"Dataset file not found at: {file_path}")
