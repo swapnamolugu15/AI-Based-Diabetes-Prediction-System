@@ -1,6 +1,8 @@
 # 🏥 Diabetes Risk Prediction System
 
-An interactive machine learning web application built with **Streamlit**, **TensorFlow**, and **Scikit-Learn** to analyze clinical datasets and predict patient diabetes risk profiles instantaneously.
+An interactive machine learning web application built with **Streamlit** and **Scikit-Learn** to analyze clinical datasets and predict patient diabetes risk profiles instantaneously.
+
+🔗 **Live Web Application:** [Access Diabetes Risk Predictor](https://ai-based-diabetes-prediction-system-tjkceiqkkaks4grjspld4d.streamlit.app/)
 
 ---
 
