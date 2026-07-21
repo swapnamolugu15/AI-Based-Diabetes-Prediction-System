@@ -2,49 +2,69 @@ import os
 import streamlit as st
 import pandas as pd
 import numpy as np
-import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve
 import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Diabetes Risk Predictor", layout="wide")
 st.title("🏥 Diabetes Risk Prediction & Model Analysis System")
 
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
 @st.cache_resource
 def load_and_train_model():
-    file_path = r"diabetes_risk_dataset.csv"
+    # 1. Handle file paths for both local and Streamlit Cloud environments
+    file_path = os.path.join("dataset", "diabetes_risk_dataset.csv")
     
     if not os.path.exists(file_path):
-        st.error(f"Dataset file not found at: {file_path}")
-        st.stop()
+        file_path = "diabetes_risk_dataset.csv"
+        if not os.path.exists(file_path):
+            st.error("Dataset file not found! Please place 'diabetes_risk_dataset.csv' in your repository.")
+            st.stop()
         
     data = pd.read_csv(file_path)
     
+    # Identify target column dynamically
     target_col = [col for col in data.columns if "out" in col.lower() or "diag" in col.lower() or "diabet" in col.lower()]
-    
+    if not target_col:
+        st.error("Could not find a target outcome column in dataset.")
+        st.stop()
+        
     selected_features = ['Age', 'BMI', 'Physical activity level', 'Blood pressure', 'Cholesterol', 'Glucose level']
-    X = data[selected_features].copy()
-    y = data[target_col[0]].replace({'No': 0, 'Yes': 1})
+    
+    # 2. Fix target column processing to ensure clean binary integer targets (0 and 1)
+    y_raw = data[target_col[0]].astype(str).str.strip().str.lower()
+    mapping = {
+        'no': 0, 'false': 0, '0': 0, '0.0': 0,
+        'yes': 1, 'true': 1, '1': 1, '1.0': 1, 'diabetes': 1
+    }
+    y = y_raw.map(mapping)
+    
+    # Fallback to numeric conversion if mapping resulted in NaNs
+    if y.isna().all():
+        y = pd.to_numeric(data[target_col[0]], errors='coerce')
+        
+    valid_idx = y.notna()
+    X = data.loc[valid_idx, selected_features].copy()
+    y = y[valid_idx].astype(int)
     
     activity_categories = X['Physical activity level'].dropna().unique().tolist()
     
+    # Fill missing feature values
     X['BMI'] = X['BMI'].fillna(X['BMI'].median())
     X['Glucose level'] = X['Glucose level'].fillna(X['Glucose level'].median())
     
+    # Encode categorical variable
     X = pd.get_dummies(X, columns=['Physical activity level'], drop_first=True)
     processed_feature_names = X.columns.tolist()
     
     numerical_cols = ['Age', 'BMI', 'Blood pressure', 'Cholesterol', 'Glucose level']
-    numeric_data = X[numerical_cols].values.astype(np.float32)
     
-    normalizer = tf.keras.layers.Normalization(axis=-1)
-    normalizer.adapt(numeric_data)
-    X[numerical_cols] = normalizer(numeric_data).numpy()
+    # Scale numerical columns using StandardScaler
+    scaler = StandardScaler()
+    X[numerical_cols] = scaler.fit_transform(X[numerical_cols])
     
+    # Train / Test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     
     rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -64,10 +84,12 @@ def load_and_train_model():
     
     fpr, tpr, _ = roc_curve(y_test, y_prob)
     
-    return rf_model, normalizer, processed_feature_names, numerical_cols, activity_categories, metrics, fpr, tpr
+    return rf_model, scaler, processed_feature_names, numerical_cols, activity_categories, metrics, fpr, tpr
 
-rf_model, normalizer, processed_feature_names, numerical_cols, activity_categories, metrics, fpr, tpr = load_and_train_model()
+# Load and train
+rf_model, scaler, processed_feature_names, numerical_cols, activity_categories, metrics, fpr, tpr = load_and_train_model()
 
+# UI Layout
 col_left, col_right = st.columns(2)
 
 with col_left:
@@ -117,9 +139,8 @@ with col_right:
     input_encoded = pd.get_dummies(user_input_df, columns=['Physical activity level'])
     input_encoded = input_encoded.reindex(columns=processed_feature_names, fill_value=0)
     
-    user_numeric = input_encoded[numerical_cols].values.astype(np.float32)
-    scaled_user_numeric = normalizer(user_numeric).numpy()
-    input_encoded[numerical_cols] = scaled_user_numeric
+    # Transform user inputs using StandardScaler
+    input_encoded[numerical_cols] = scaler.transform(input_encoded[numerical_cols])
     
     if st.button("Calculate Patient Risk Status", type="primary"):
         prediction = rf_model.predict(input_encoded)
